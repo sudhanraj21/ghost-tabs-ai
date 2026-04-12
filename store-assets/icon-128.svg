@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e3a5f"/>
+      <stop offset="100%" style="stop-color:#0d2137"/>
+    </linearGradient>
+    <linearGradient id="glowGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0078d4"/>
+      <stop offset="100%" style="stop-color:#0098ff"/>
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="128" height="128" rx="20" fill="url(#bgGrad)"/>
+  
+  <!-- Browser tab shape -->
+  <g transform="translate(20, 28)">
+    <!-- Tab -->
+    <path d="M4,8 L84,8 C86,8 88,10 88,12 L88,56 C88,58 86,60 84,60 L4,60 C2,60 0,58 0,56 L0,12 C0,10 2,8 4,8 Z" 
+          fill="url(#glowGrad)" fill-opacity="0.9"/>
+    <!-- Tab content lines -->
+    <rect x="8" y="16" width="72" height="4" rx="2" fill="rgba(255,255,255,0.4)"/>
+    <circle cx="14" cy="28" r="3" fill="rgba(255,255,255,0.5)"/>
+    <circle cx="24" cy="28" r="3" fill="rgba(255,255,255,0.5)"/>
+    <circle cx="34" cy="28" r="3" fill="rgba(255,255,255,0.5)"/>
+    <path d="M14,44 Q24,40 34,44 Q44,48 54,44 Q64,40 74,44" 
+          stroke="rgba(255,255,255,0.5)" stroke-width="3" fill="none" stroke-linecap="round"/>
+  </g>
+  
+  <!-- Ghost icon overlay -->
+  <g transform="translate(36, 8)">
+    <text x="28" y="52" text-anchor="middle" font-size="40">👻</text>
+  </g>
+  
+  <!-- Border glow -->
+  <rect x="2" y="2" width="124" height="124" rx="18" 
+        fill="none" stroke="rgba(0,120,212,0.3)" stroke-width="2"/>
+</svg>
