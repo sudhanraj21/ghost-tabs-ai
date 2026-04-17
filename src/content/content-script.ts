@@ -36,6 +36,8 @@ let isExpanded = false;
 let clickTimer: ReturnType<typeof setTimeout> | null = null;
 let lastLoadedTabIds: string[] = [];
 let t: any = null;
+let searchQuery = '';
+let activeFilter: string | null = null;
 
 async function loadTranslations() {
   try {
@@ -110,6 +112,27 @@ async function init() {
   await loadGhostTabs();
   await loadAIMetadata();
   createDock();
+  
+  document.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.key === '/' && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
+      e.preventDefault();
+      const searchInput = document.querySelector('.ghost-dock__search-input') as HTMLInputElement;
+      if (searchInput) {
+        searchInput.focus();
+        isExpanded = true;
+        const dock = document.getElementById('ghost-dock');
+        if (dock) dock.classList.add('ghost-dock--expanded');
+      }
+    }
+    
+    if (e.key === 'Escape') {
+      const searchInput = document.querySelector('.ghost-dock__search-input') as HTMLInputElement;
+      if (document.activeElement === searchInput) {
+        searchInput.blur();
+        searchQuery = '';
+      }
+    }
+  });
   
   setInterval(async () => {
     await loadTranslations();
@@ -235,9 +258,31 @@ function createDockHTML(): string {
     return score;
   };
 
-  const sortedTabs = [...ghostTabs].sort((a, b) => {
-    return getScore(b) - getScore(a);
-  }).slice(0, 12);
+  const getFilteredTabs = () => {
+    let filtered = [...ghostTabs];
+    
+    if (activeFilter) {
+      filtered = filtered.filter(tab => {
+        const aiMeta = aiMetadataMap[tab.id];
+        const displayIntent = aiMeta?.aiIntent || tab.intent;
+        return displayIntent === activeFilter;
+      });
+    }
+    
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(tab => 
+        tab.title?.toLowerCase().includes(query) ||
+        tab.domain?.toLowerCase().includes(query) ||
+        tab.url?.toLowerCase().includes(query)
+      );
+    }
+    
+    return filtered.sort((a, b) => getScore(b) - getScore(a));
+  };
+
+  const filteredTabs = getFilteredTabs();
+  const sortedTabs = filteredTabs.slice(0, 8);
 
   const resumeTabs = sortedTabs.filter(t => getScore(t) >= 15).slice(0, 3);
   const resumeItems = resumeTabs.map(tab => createResumeTabHTML(tab)).join('');
@@ -265,13 +310,24 @@ function createDockHTML(): string {
       ${count > 0 ? `<span class="ghost-dock__badge">${count > 99 ? '99+' : count}</span>` : ''}
     </div>
     <div class="ghost-dock__shelf">
+      <div class="ghost-dock__search-bar">
+        <input type="text" class="ghost-dock__search-input" placeholder="Search tabs... (Press /)" value="${escapeHtml(searchQuery)}" />
+        <div class="ghost-dock__filter-chips">
+          <span class="ghost-dock__filter-chip ${activeFilter === null ? 'active' : ''}" data-filter="all">All</span>
+          <span class="ghost-dock__filter-chip ${activeFilter === 'watch_later' ? 'active' : ''}" data-filter="watch_later" style="--chip-color: #E91E63">W</span>
+          <span class="ghost-dock__filter-chip ${activeFilter === 'learn_later' ? 'active' : ''}" data-filter="learn_later" style="--chip-color: #9C27B0">L</span>
+          <span class="ghost-dock__filter-chip ${activeFilter === 'read_later' ? 'active' : ''}" data-filter="read_later" style="--chip-color: #2196F3">R</span>
+          <span class="ghost-dock__filter-chip ${activeFilter === 'buy_later' ? 'active' : ''}" data-filter="buy_later" style="--chip-color: #4CAF50">B</span>
+          <span class="ghost-dock__filter-chip ${activeFilter === 'work' ? 'active' : ''}" data-filter="work" style="--chip-color: #607D8B">W</span>
+        </div>
+      </div>
       ${resumeItems ? `
         <div class="ghost-dock__resume-bar">
           <span class="ghost-dock__resume-label">Resume</span>
           <div class="ghost-dock__resume-tabs">${resumeItems}</div>
         </div>
       ` : ''}
-      <div class="ghost-dock__tab-rail">${tabItems}</div>
+      <div class="ghost-dock__tab-rail">${tabItems || '<div class="ghost-dock__empty">No tabs found</div>'}</div>
     </div>
   `;
 }
@@ -410,6 +466,37 @@ function setupDockEvents(dock: HTMLElement) {
       if (id) {
         await deleteTab(id);
       }
+    };
+  });
+
+  const searchInput = dock.querySelector('.ghost-dock__search-input') as HTMLInputElement;
+  if (searchInput) {
+    searchInput.oninput = () => {
+      searchQuery = searchInput.value;
+      updateDock();
+    };
+    
+    searchInput.onkeydown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        searchQuery = '';
+        searchInput.blur();
+        updateDock();
+      } else if (e.key === 'Enter') {
+        const firstTab = dock.querySelector('.ghost-dock__tab') as HTMLElement;
+        if (firstTab) {
+          const id = firstTab.dataset.id;
+          if (id) restoreTab(id);
+        }
+      }
+    };
+  }
+
+  dock.querySelectorAll('.ghost-dock__filter-chip').forEach(chip => {
+    const el = chip as HTMLElement;
+    el.onclick = () => {
+      const filter = el.dataset.filter || 'all';
+      activeFilter = filter === 'all' ? null : filter;
+      updateDock();
     };
   });
 

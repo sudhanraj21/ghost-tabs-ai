@@ -176,7 +176,7 @@
 
 .ghost-dock__resume-tabs {
   display: flex;
-  gap: 6px;
+  gap: 4px;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -188,11 +188,11 @@
 .ghost-dock__resume-tab {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 4px 8px;
+  gap: 4px;
+  padding: 3px 6px;
   background: linear-gradient(135deg, rgba(0, 120, 212, 0.15) 0%, rgba(0, 120, 212, 0.08) 100%);
   border: 1px solid rgba(0, 120, 212, 0.25);
-  border-radius: 8px;
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
   flex-shrink: 0;
@@ -202,15 +202,24 @@
 .ghost-dock__resume-tab:hover {
   background: linear-gradient(135deg, rgba(0, 120, 212, 0.25) 0%, rgba(0, 120, 212, 0.15) 100%);
   border-color: rgba(0, 120, 212, 0.4);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 120, 212, 0.2);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0, 120, 212, 0.2);
 }
 
 .ghost-dock__resume-favicon {
-  width: 14px;
-  height: 14px;
-  border-radius: 4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
   flex-shrink: 0;
+}
+
+.ghost-dock__resume-title {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.9);
+  white-space: nowrap;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ghost-dock__resume-title {
@@ -251,14 +260,14 @@
 
 .ghost-dock__tab {
   flex: 0 0 auto;
-  width: 150px;
-  height: 32px;
+  width: 110px;
+  height: 26px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 10px 0 6px;
+  gap: 4px;
+  padding: 0 8px 0 4px;
   background: linear-gradient(180deg, rgba(60, 60, 68, 0.8) 0%, rgba(44, 44, 50, 0.85) 100%);
-  border-radius: 8px 8px 2px 2px;
+  border-radius: 6px 6px 2px 2px;
   border: 1px solid rgba(255, 255, 255, 0.04);
   border-bottom: none;
   cursor: pointer;
@@ -280,23 +289,23 @@
   right: 0;
   height: 1px;
   background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.06) 40%, rgba(255, 255, 255, 0.06) 60%, transparent 100%);
-  border-radius: 8px 8px 0 0;
+  border-radius: 6px 6px 0 0;
 }
 
 .ghost-dock__tab::after {
   content: '';
   position: absolute;
   right: 0;
-  top: 6px;
-  bottom: 4px;
+  top: 4px;
+  bottom: 3px;
   width: 1px;
   background: rgba(0, 0, 0, 0.2);
 }
 
 .ghost-dock__tab:hover {
   background: linear-gradient(180deg, rgba(75, 75, 85, 0.9) 0%, rgba(55, 55, 62, 0.95) 100%);
-  transform: translateY(-3px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
 .ghost-dock__tab:active {
@@ -350,16 +359,16 @@
 }
 
 .ghost-dock__tab-favicon {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
   flex-shrink: 0;
   opacity: 0.95;
 }
 
 .ghost-dock__tab-title {
   flex: 1;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
   color: rgba(255, 255, 255, 0.92);
   white-space: nowrap;
@@ -370,11 +379,73 @@
 }
 
 .ghost-dock__tab-indicator {
-  width: 5px;
-  height: 5px;
+  width: 4px;
+  height: 4px;
   border-radius: 50%;
   flex-shrink: 0;
   opacity: 0.85;
+}
+
+.ghost-dock__search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px 8px 0 0;
+}
+
+.ghost-dock__search-input {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #fff;
+  outline: none;
+  min-width: 120px;
+}
+
+.ghost-dock__search-input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.ghost-dock__search-input:focus {
+  border-color: rgba(0, 120, 212, 0.5);
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.ghost-dock__filter-chips {
+  display: flex;
+  gap: 4px;
+}
+
+.ghost-dock__filter-chip {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.ghost-dock__filter-chip:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: scale(1.1);
+}
+
+.ghost-dock__filter-chip.active {
+  background: var(--chip-color, #0078d4);
+  border-color: var(--chip-color, #0078d4);
+  color: #fff;
 }
 
 .ghost-dock__empty {
