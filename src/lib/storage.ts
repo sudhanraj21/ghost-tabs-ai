@@ -7,6 +7,7 @@ const STORAGE_KEYS = {
   ACTIVITY_LOG: 'activityLog',
   INTENT_OVERRIDES: 'intentOverrides',
   DAILY_SUMMARIES: 'dailySummaries',
+  TAB_ACTIVITIES: 'tabActivities',
 } as const;
 
 export async function getGhostTabs(): Promise<GhostTab[]> {
@@ -106,6 +107,17 @@ export async function saveSettings(settings: Partial<GhostSettings>): Promise<vo
   await chrome.storage.local.set({
     [STORAGE_KEYS.SETTINGS]: { ...current, ...settings },
   });
+}
+
+export async function saveTabActivities(activities: Record<number, { lastActiveAt: number; totalActiveTimeMs: number; url: string; title: string; isPinned: boolean; isAudible: boolean; groupId?: number }>): Promise<void> {
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.TAB_ACTIVITIES]: activities,
+  });
+}
+
+export async function loadTabActivities(): Promise<Record<number, { lastActiveAt: number; totalActiveTimeMs: number; url: string; title: string; isPinned: boolean; isAudible: boolean; groupId?: number }> | null> {
+  const result = await chrome.storage.local.get(STORAGE_KEYS.TAB_ACTIVITIES);
+  return result[STORAGE_KEYS.TAB_ACTIVITIES] || null;
 }
 
 export async function getIntentOverrides(): Promise<IntentOverride[]> {

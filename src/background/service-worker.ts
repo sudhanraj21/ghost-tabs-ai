@@ -1,5 +1,5 @@
 import { updateBadgeCount, getSettings, getActiveGhostTabs, getGhostTabs, initBadgeCount } from '../lib/storage';
-import { trackCurrentTabs, startTracking, updateTabActivity, removeTabActivity } from '../lib/tab-tracker';
+import { trackCurrentTabs, startTracking, updateTabActivity, removeTabActivity, initTabActivities } from '../lib/tab-tracker';
 import { parkTab, restoreTab, autoParkInactiveTabs, parkAllInactiveTabs } from '../lib/park-manager';
 import { getAllAIMetadata } from '../lib/ai-storage';
 import { getTranslations, type Locale } from '../lib/i18n';
@@ -23,6 +23,7 @@ chrome.runtime.onInstalled.addListener(async () => {
   console.log('GhostTabs AI installed');
   
   await initBadgeCount();
+  await initTabActivities();
   await updateBadgeCount();
   startTracking();
   
@@ -134,6 +135,7 @@ chrome.contextMenus.onClicked.addListener(async (info) => {
 chrome.runtime.onStartup.addListener(async () => {
   console.log('GhostTabs AI starting up');
   await initBadgeCount();
+  await initTabActivities();
   await updateBadgeCount();
   startTracking();
   

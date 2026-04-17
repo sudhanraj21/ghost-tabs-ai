@@ -338,15 +338,12 @@ function escapeHtml(text: string): string {
 
 function setupDockEvents(dock: HTMLElement) {
   const dockClickArea = dock.querySelector('.ghost-dock__dock') as HTMLElement;
-  if (!dockClickArea) {
-    console.error('GhostTabs: Dock click area not found');
-    return;
-  }
+  if (!dockClickArea) return;
 
-  dockClickArea.onclick = (e: MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
+  dockClickArea.addEventListener('click', (e: MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (!target.closest('.ghost-dock__dock')) return;
+
     if (clickTimer) {
       clearTimeout(clickTimer);
       clickTimer = null;
@@ -357,63 +354,51 @@ function setupDockEvents(dock: HTMLElement) {
         handleSingleClick();
       }, 400);
     }
-  };
+  });
 
-  dockClickArea.ondblclick = (e: MouseEvent) => {
+  dockClickArea.addEventListener('dblclick', (e: MouseEvent) => {
     e.preventDefault();
-    e.stopPropagation();
     if (clickTimer) {
       clearTimeout(clickTimer);
       clickTimer = null;
     }
     handleDoubleClick();
-  };
+  });
 
   dock.querySelectorAll('.ghost-dock__tab').forEach(tabEl => {
     const el = tabEl as HTMLElement;
 
-    el.onclick = async (e) => {
+    el.addEventListener('click', async (e) => {
       e.preventDefault();
       e.stopPropagation();
       const id = el.dataset.id;
       if (id) {
         await restoreTab(id);
       }
-    };
+    });
 
-    el.oncontextmenu = async (e) => {
+    el.addEventListener('contextmenu', async (e) => {
       e.preventDefault();
       e.stopPropagation();
       const id = el.dataset.id;
       if (id) {
         await deleteTab(id);
       }
-    };
+    });
   });
-  
+
   dock.querySelectorAll('.ghost-dock__resume-tab').forEach(tabEl => {
     const el = tabEl as HTMLElement;
 
-    el.onclick = async (e) => {
+    el.addEventListener('click', async (e) => {
       e.preventDefault();
       e.stopPropagation();
       const id = el.dataset.id;
       if (id) {
         await restoreTab(id);
       }
-    };
-
-    el.oncontextmenu = async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const id = el.dataset.id;
-      if (id) {
-        await deleteTab(id);
-      }
-    };
+    });
   });
-
-  console.log('GhostTabs: Dock events set up');
 }
 
 function handleSingleClick() {

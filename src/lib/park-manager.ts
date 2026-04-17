@@ -145,6 +145,9 @@ export async function autoParkInactiveTabs(): Promise<number> {
   
   if (!settings.autoParkEnabled) return 0;
   
+  const allTabs = await chrome.tabs.query({});
+  const totalTabs = allTabs.length;
+  
   const excludedDomains = settings.excludedDomains.map(d => d.toLowerCase());
   const meetingDomains = settings.meetingDomains.map(d => d.toLowerCase());
   
@@ -171,8 +174,12 @@ export async function autoParkInactiveTabs(): Promise<number> {
     })
     .map(t => t.tabId);
   
-  const parked = await parkTabs(validTabIds);
-  return parked.length;
+  if (totalTabs > settings.maxActiveTabsBeforeSuggestion) {
+    const parked = await parkTabs(validTabIds);
+    return parked.length;
+  }
+  
+  return 0;
 }
 
 export async function parkAllInactiveTabs(): Promise<number> {

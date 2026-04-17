@@ -1,10 +1,45 @@
 import type { TabActivity } from './types';
+import { saveTabActivities, loadTabActivities } from './storage';
 
 const activityMap = new Map<number, TabActivity>();
 
 const TRACK_INTERVAL_MS = 60000;
 
 let trackInterval: ReturnType<typeof setInterval> | null = null;
+
+export async function initTabActivities(): Promise<void> {
+  const saved = await loadTabActivities();
+  if (saved) {
+    for (const [tabId, data] of Object.entries(saved)) {
+      activityMap.set(parseInt(tabId), {
+        tabId: parseInt(tabId),
+        url: data.url,
+        title: data.title,
+        lastActiveAt: data.lastActiveAt,
+        totalActiveTimeMs: data.totalActiveTimeMs,
+        isPinned: data.isPinned,
+        isAudible: data.isAudible,
+        groupId: data.groupId,
+      });
+    }
+  }
+}
+
+async function persistActivities(): Promise<void> {
+  const obj: Record<number, { lastActiveAt: number; totalActiveTimeMs: number; url: string; title: string; isPinned: boolean; isAudible: boolean; groupId?: number }> = {};
+  for (const [tabId, activity] of activityMap) {
+    obj[tabId] = {
+      lastActiveAt: activity.lastActiveAt,
+      totalActiveTimeMs: activity.totalActiveTimeMs,
+      url: activity.url,
+      title: activity.title,
+      isPinned: activity.isPinned,
+      isAudible: activity.isAudible,
+      groupId: activity.groupId,
+    };
+  }
+  await saveTabActivities(obj);
+}
 
 export function getTabActivity(tabId: number): TabActivity | undefined {
   return activityMap.get(tabId);
@@ -64,6 +99,7 @@ export async function trackCurrentTabs(): Promise<void> {
         ...existing,
         url: tab.url || '',
         title: tab.title || '',
+        lastActiveAt: now,
         isPinned: tab.pinned || false,
         isAudible: tab.audible || false,
         groupId: tab.groupId,
@@ -81,6 +117,8 @@ export async function trackCurrentTabs(): Promise<void> {
       });
     }
   }
+  
+  await persistActivities();
 }
 
 export function removeTabActivity(tabId: number): void {
