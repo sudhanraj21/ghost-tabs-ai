@@ -155,7 +155,7 @@ chrome.contextMenus.onClicked.addListener(async (info) => {
       await broadcastGhostTabsUpdate();
       chrome.notifications.create({
         type: 'basic',
-        iconUrl: '/assets/icon128.svg',
+        iconUrl: 'icons/icon128.png',
         title: 'GhostTabs AI',
         message: `Parked ${count} inactive tab${count > 1 ? 's' : ''} to ghost shelf`,
       });
