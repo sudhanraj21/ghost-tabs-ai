@@ -26,6 +26,7 @@ export default function GhostCard({ tab, onRestore, onDelete, onArchive }: Ghost
   const isRestored = tab.status === 'restored';
   const isArchived = tab.status === 'archived';
   const showStatus = isRestored || isArchived;
+  const hasAiMetadata = !!(tab.aiCategory || tab.aiLabel || tab.aiSummary);
   
   return (
     <div className="ghost-card" onClick={() => !showStatus && onRestore(tab)}>
@@ -38,6 +39,9 @@ export default function GhostCard({ tab, onRestore, onDelete, onArchive }: Ghost
       </div>
       <div className="content">
         <div className="title" title={tab.title}>{tab.title}</div>
+        {tab.aiSummary && (
+          <div className="ai-summary" title={tab.aiSummary}>{tab.aiSummary}</div>
+        )}
         <div className="meta">
           <span className="domain">{tab.domain}</span>
           <span className="time">{formatTime(tab.parkedAt)}</span>
@@ -49,6 +53,11 @@ export default function GhostCard({ tab, onRestore, onDelete, onArchive }: Ghost
           {!showStatus && (
             <span className={`intent-badge ${tab.intent}`}>
               {INTENT_LABELS[tab.intent]}
+            </span>
+          )}
+          {hasAiMetadata && (
+            <span className="ai-badge">
+              {tab.aiCategoryLabel || tab.aiCategory}
             </span>
           )}
         </div>

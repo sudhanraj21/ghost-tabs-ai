@@ -92,14 +92,12 @@ export async function trackCurrentTabs(): Promise<void> {
     if (tab.id === undefined) continue;
     
     const existing = activityMap.get(tab.id);
-    const now = Date.now();
     
     if (existing) {
       activityMap.set(tab.id, {
         ...existing,
         url: tab.url || '',
         title: tab.title || '',
-        lastActiveAt: now,
         isPinned: tab.pinned || false,
         isAudible: tab.audible || false,
         groupId: tab.groupId,
@@ -109,7 +107,7 @@ export async function trackCurrentTabs(): Promise<void> {
         tabId: tab.id,
         url: tab.url || '',
         title: tab.title || '',
-        lastActiveAt: now,
+        lastActiveAt: Date.now(),
         totalActiveTimeMs: 0,
         isPinned: tab.pinned || false,
         isAudible: tab.audible || false,

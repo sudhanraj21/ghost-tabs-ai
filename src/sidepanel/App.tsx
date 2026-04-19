@@ -1,11 +1,17 @@
 import { useEffect, useState, useCallback } from 'react';
-import type { GhostTab, Intent } from '../lib/types';
+import type { GhostTab, Intent, GhostSettings } from '../lib/types';
 import { INTENT_LABELS } from '../lib/types';
 import type { Translations } from '../lib/i18n';
 import GhostCard from './components/GhostCard';
 import SearchBar from './components/SearchBar';
 import FilterChips from './components/FilterChips';
 import EmptyState from './components/EmptyState';
+
+interface CleanerReport {
+  duplicateGroups: { canonicalId: string; duplicateIds: string[] }[];
+  totalCandidates: number;
+  generatedAt: number;
+}
 
 type FilterType = 'all' | Intent;
 type ViewTab = 'shelved' | 'history';
@@ -28,6 +34,10 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [activeView, setActiveView] = useState<ViewTab>('shelved');
   const [translations, setTranslations] = useState<Translations | null>(null);
+  const [settings, setSettings] = useState<GhostSettings | null>(null);
+  const [cleanerReport, setCleanerReport] = useState<CleanerReport | null>(null);
+  const [cleanerLoading, setCleanerLoading] = useState(false);
+  const [aiCategorizing, setAiCategorizing] = useState(false);
 
   const loadTranslations = useCallback(async () => {
     try {
@@ -39,6 +49,57 @@ export default function App() {
       console.error('Error loading translations:', error);
     }
   }, []);
+
+  const loadSettings = useCallback(async () => {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'GET_SETTINGS' });
+      if (response.success && response.data) {
+        setSettings(response.data);
+      }
+    } catch (error) {
+      console.error('Error loading settings:', error);
+    }
+  }, []);
+
+  const scanCleaner = useCallback(async () => {
+    setCleanerLoading(true);
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'GET_DEAD_TAB_CLEANER_REPORT' });
+      if (response.success && response.data) {
+        setCleanerReport(response.data);
+      }
+    } catch (error) {
+      console.error('Error scanning cleaner:', error);
+    } finally {
+      setCleanerLoading(false);
+    }
+  }, []);
+
+  const runCleaner = useCallback(async () => {
+    setCleanerLoading(true);
+    try {
+      await chrome.runtime.sendMessage({ type: 'RUN_DEAD_TAB_CLEANUP' });
+      await loadGhostTabs();
+      setCleanerReport(null);
+    } catch (error) {
+      console.error('Error running cleaner:', error);
+    } finally {
+      setCleanerLoading(false);
+    }
+  }, []);
+
+  const runAiCategorization = useCallback(async () => {
+    if (!settings?.aiEnabled || !settings.aiApiKey) return;
+    setAiCategorizing(true);
+    try {
+      await chrome.runtime.sendMessage({ type: 'RUN_AI_CATEGORIZATION_ALL' });
+      await loadGhostTabs();
+    } catch (error) {
+      console.error('Error running AI categorization:', error);
+    } finally {
+      setAiCategorizing(false);
+    }
+  }, [settings]);
 
   const loadGhostTabs = useCallback(async () => {
     try {
@@ -56,13 +117,21 @@ export default function App() {
   useEffect(() => {
     loadGhostTabs();
     loadTranslations();
+    loadSettings();
+    scanCleaner();
+    
+    chrome.runtime.onMessage.addListener((message) => {
+      if (message.type === 'GHOST_TABS_UPDATED') {
+        loadGhostTabs();
+      }
+    });
     
     const interval = setInterval(() => {
       loadGhostTabs();
       loadTranslations();
     }, 5000);
     return () => clearInterval(interval);
-  }, [loadGhostTabs, loadTranslations]);
+  }, [loadGhostTabs, loadTranslations, loadSettings, scanCleaner]);
 
   useEffect(() => {
     let result = ghostTabs.filter(t => t.status === 'ghosted');
@@ -200,6 +269,36 @@ export default function App() {
         onFilterChange={(filter) => setActiveFilter(filter as FilterType)}
         counts={intentCounts}
       />
+
+      {cleanerReport && (
+        <div className="cleaner-card">
+          <div className="cleaner-header">
+            <span className="cleaner-title">Dead Tab Cleaner</span>
+            <span className="cleaner-count">{cleanerReport.totalCandidates} duplicates</span>
+          </div>
+          <div className="cleaner-actions">
+            <button className="cleaner-btn primary" onClick={runCleaner} disabled={cleanerLoading || cleanerReport.totalCandidates === 0}>
+              {cleanerLoading ? 'Cleaning...' : `Clean ${cleanerReport.totalCandidates} duplicates`}
+            </button>
+            <button className="cleaner-btn secondary" onClick={() => setCleanerReport(null)}>
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
+      {settings?.aiEnabled && settings?.aiApiKey && (
+        <div className="ai-card">
+          <div className="ai-header">
+            <span className="ai-title">AI Auto-Categorization</span>
+          </div>
+          <div className="ai-actions">
+            <button className="ai-btn" onClick={runAiCategorization} disabled={aiCategorizing}>
+              {aiCategorizing ? 'Categorizing...' : 'Run AI Categorization'}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="content">
         {loading ? (

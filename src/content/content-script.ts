@@ -34,10 +34,7 @@ let ghostTabs: GhostTab[] = [];
 let settings: GhostSettingsWithShelf | null = null;
 let isExpanded = false;
 let clickTimer: ReturnType<typeof setTimeout> | null = null;
-let lastLoadedTabIds: string[] = [];
 let t: any = null;
-let searchQuery = '';
-let activeFilter: string | null = null;
 
 async function loadTranslations() {
   try {
@@ -96,15 +93,10 @@ async function init() {
     console.log('Content script received message:', message.type);
     if (message.type === 'GHOST_TABS_UPDATED' || message.type === 'REFRESH_GHOST_TABS') {
       console.log('Reloading ghost tabs...');
-      loadGhostTabs().then((changed: boolean) => {
-        loadAIMetadata().then(() => {
-          const dock = document.getElementById('ghost-dock');
-          if (dock && changed) {
-            dock.innerHTML = createDockHTML();
-            setupDockEvents(dock);
-            console.log('Dock updated with', ghostTabs.length, 'tabs');
-          }
-        });
+      loadGhostTabs().then(async () => {
+        await loadAIMetadata();
+        updateDock();
+        console.log('Dock updated with', ghostTabs.length, 'tabs');
       });
     }
   });
@@ -112,62 +104,14 @@ async function init() {
   await loadGhostTabs();
   await loadAIMetadata();
   createDock();
-  
-  document.addEventListener('keydown', (e: KeyboardEvent) => {
-    if (e.key === '/' && !['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
-      e.preventDefault();
-      const searchInput = document.querySelector('.ghost-dock__search-input') as HTMLInputElement;
-      if (searchInput) {
-        searchInput.focus();
-        isExpanded = true;
-        const dock = document.getElementById('ghost-dock');
-        if (dock) dock.classList.add('ghost-dock--expanded');
-      }
-    }
-    
-    if (e.key === 'Escape') {
-      const searchInput = document.querySelector('.ghost-dock__search-input') as HTMLInputElement;
-      if (document.activeElement === searchInput) {
-        searchInput.blur();
-        searchQuery = '';
-      }
-    }
-  });
-  
-  setInterval(async () => {
-    await loadTranslations();
-    const changed = await loadGhostTabs();
-    await loadAIMetadata();
-    
-    const dock = document.getElementById('ghost-dock');
-    if (dock && changed) {
-      dock.innerHTML = createDockHTML();
-      setupDockEvents(dock);
-    }
-  }, 5000);
 }
 
 async function loadGhostTabs() {
   const response = await chrome.runtime.sendMessage({ type: 'GET_GHOST_TABS' });
   if (response.success) {
     const newTabs: GhostTab[] = response.data || [];
-    const newTabIds = newTabs.map((t: GhostTab) => t.id).sort();
-    const lastIds = lastLoadedTabIds.slice().sort();
-    
-    const hasNewTabs = newTabIds.length > lastLoadedTabIds.length || 
-      newTabIds.some((id: string) => !lastLoadedTabIds.includes(id));
-    const hasRemovedTabs = lastLoadedTabIds.some((id: string) => !newTabIds.includes(id));
-    
-    if (hasNewTabs || hasRemovedTabs || newTabIds.length !== lastIds.length) {
-      lastLoadedTabIds = newTabs.map((t: GhostTab) => t.id);
-      ghostTabs = newTabs;
-      return true;
-    }
-    
     ghostTabs = newTabs;
-    return false;
   }
-  return false;
 }
 
 interface AIMetadata {
@@ -258,31 +202,7 @@ function createDockHTML(): string {
     return score;
   };
 
-  const getFilteredTabs = () => {
-    let filtered = [...ghostTabs];
-    
-    if (activeFilter) {
-      filtered = filtered.filter(tab => {
-        const aiMeta = aiMetadataMap[tab.id];
-        const displayIntent = aiMeta?.aiIntent || tab.intent;
-        return displayIntent === activeFilter;
-      });
-    }
-    
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(tab => 
-        tab.title?.toLowerCase().includes(query) ||
-        tab.domain?.toLowerCase().includes(query) ||
-        tab.url?.toLowerCase().includes(query)
-      );
-    }
-    
-    return filtered.sort((a, b) => getScore(b) - getScore(a));
-  };
-
-  const filteredTabs = getFilteredTabs();
-  const sortedTabs = filteredTabs.slice(0, 8);
+  const sortedTabs = [...ghostTabs].sort((a, b) => getScore(b) - getScore(a));
 
   const resumeTabs = sortedTabs.filter(t => getScore(t) >= 15).slice(0, 3);
   const resumeItems = resumeTabs.map(tab => createResumeTabHTML(tab)).join('');
@@ -310,24 +230,13 @@ function createDockHTML(): string {
       ${count > 0 ? `<span class="ghost-dock__badge">${count > 99 ? '99+' : count}</span>` : ''}
     </div>
     <div class="ghost-dock__shelf">
-      <div class="ghost-dock__search-bar">
-        <input type="text" class="ghost-dock__search-input" placeholder="Search tabs... (Press /)" value="${escapeHtml(searchQuery)}" />
-        <div class="ghost-dock__filter-chips">
-          <span class="ghost-dock__filter-chip ${activeFilter === null ? 'active' : ''}" data-filter="all">All</span>
-          <span class="ghost-dock__filter-chip ${activeFilter === 'watch_later' ? 'active' : ''}" data-filter="watch_later" style="--chip-color: #E91E63">W</span>
-          <span class="ghost-dock__filter-chip ${activeFilter === 'learn_later' ? 'active' : ''}" data-filter="learn_later" style="--chip-color: #9C27B0">L</span>
-          <span class="ghost-dock__filter-chip ${activeFilter === 'read_later' ? 'active' : ''}" data-filter="read_later" style="--chip-color: #2196F3">R</span>
-          <span class="ghost-dock__filter-chip ${activeFilter === 'buy_later' ? 'active' : ''}" data-filter="buy_later" style="--chip-color: #4CAF50">B</span>
-          <span class="ghost-dock__filter-chip ${activeFilter === 'work' ? 'active' : ''}" data-filter="work" style="--chip-color: #607D8B">W</span>
-        </div>
-      </div>
       ${resumeItems ? `
         <div class="ghost-dock__resume-bar">
           <span class="ghost-dock__resume-label">Resume</span>
           <div class="ghost-dock__resume-tabs">${resumeItems}</div>
         </div>
       ` : ''}
-      <div class="ghost-dock__tab-rail">${tabItems || '<div class="ghost-dock__empty">No tabs found</div>'}</div>
+      <div class="ghost-dock__tab-rail">${tabItems || '<div class="ghost-dock__empty">No tabs</div>'}</div>
     </div>
   `;
 }
@@ -469,37 +378,6 @@ function setupDockEvents(dock: HTMLElement) {
     };
   });
 
-  const searchInput = dock.querySelector('.ghost-dock__search-input') as HTMLInputElement;
-  if (searchInput) {
-    searchInput.oninput = () => {
-      searchQuery = searchInput.value;
-      updateDock();
-    };
-    
-    searchInput.onkeydown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        searchQuery = '';
-        searchInput.blur();
-        updateDock();
-      } else if (e.key === 'Enter') {
-        const firstTab = dock.querySelector('.ghost-dock__tab') as HTMLElement;
-        if (firstTab) {
-          const id = firstTab.dataset.id;
-          if (id) restoreTab(id);
-        }
-      }
-    };
-  }
-
-  dock.querySelectorAll('.ghost-dock__filter-chip').forEach(chip => {
-    const el = chip as HTMLElement;
-    el.onclick = () => {
-      const filter = el.dataset.filter || 'all';
-      activeFilter = filter === 'all' ? null : filter;
-      updateDock();
-    };
-  });
-
   console.log('GhostTabs: Dock events set up');
 }
 
@@ -519,10 +397,8 @@ async function handleDoubleClick() {
     } else {
       showToast(t?.toastSaved || 'Saved to GhostTabs', 'success');
     }
-    const changed = await loadGhostTabs();
-    if (changed) {
-      updateDock();
-    }
+    await loadGhostTabs();
+    updateDock();
   }
 }
 
@@ -534,10 +410,8 @@ async function restoreTab(id: string) {
 
   if (response.success) {
     showToast(t?.toastRestored || 'Restored', 'success');
-    const changed = await loadGhostTabs();
-    if (changed) {
-      updateDock();
-    }
+    await loadGhostTabs();
+    updateDock();
   } else {
     showToast(t?.toastFailedRestore || 'Failed to restore', 'warning');
   }
@@ -551,20 +425,87 @@ async function deleteTab(id: string) {
 
   if (response.success) {
     showToast(t?.toastRemoved || 'Removed', 'info');
-    const changed = await loadGhostTabs();
-    if (changed) {
-      updateDock();
-    }
+    await loadGhostTabs();
+    updateDock();
   }
 }
 
 function updateDock() {
   const dock = document.getElementById('ghost-dock');
   if (dock) {
-    dock.innerHTML = '';
-    dock.innerHTML = createDockHTML();
-    setupDockEvents(dock);
+    const existingDock = dock.querySelector('.ghost-dock__dock');
+    const existingBadge = dock.querySelector('.ghost-dock__badge');
+    const tabRail = dock.querySelector('.ghost-dock__tab-rail') as HTMLElement | null;
+    const prevScrollLeft = tabRail?.scrollLeft ?? 0;
+    const prevBadgeText = existingBadge?.textContent ?? '';
+    
+    const newCount = ghostTabs.length;
+    const newBadgeText = newCount > 0 ? (newCount > 99 ? '99+' : String(newCount)) : '';
+    
+    if (prevBadgeText === newBadgeText && existingDock) {
+      const newShelfHTML = createShelfHTML();
+      const shelfEl = dock.querySelector('.ghost-dock__shelf');
+      if (shelfEl) {
+        shelfEl.innerHTML = newShelfHTML;
+        setupDockEvents(dock);
+        const newTabRail = dock.querySelector('.ghost-dock__tab-rail') as HTMLElement | null;
+        if (newTabRail) {
+          requestAnimationFrame(() => {
+            newTabRail.scrollLeft = prevScrollLeft;
+          });
+        }
+      }
+    } else if (existingDock) {
+      const newShelfHTML = createShelfHTML();
+      const shelfEl = dock.querySelector('.ghost-dock__shelf');
+      if (shelfEl) {
+        shelfEl.innerHTML = newShelfHTML;
+      }
+      if (existingBadge) {
+        existingBadge.textContent = newBadgeText;
+      } else if (newBadgeText) {
+        const badge = document.createElement('span');
+        badge.className = 'ghost-dock__badge';
+        badge.textContent = newBadgeText;
+        existingDock.appendChild(badge);
+      }
+      setupDockEvents(dock);
+    } else {
+      dock.innerHTML = createDockHTML();
+      setupDockEvents(dock);
+    }
   }
+}
+
+function createShelfHTML(): string {
+  const getScore = (tab: GhostTab) => {
+    let score = 0;
+    if (tab.pinned) score += 30;
+    if ((tab.restoreCount || 0) > 0) score += 20;
+    score += Math.min((tab.totalActiveTimeMs || 0) / 1000, 20);
+    const recency = tab.parkedAt || tab.lastActiveAt || 0;
+    if (recency) {
+      const hoursSince = (Date.now() - recency) / (1000 * 60 * 60);
+      score += Math.max(0, 10 - hoursSince / 24);
+    }
+    return score;
+  };
+
+  const sortedTabs = [...ghostTabs].sort((a, b) => getScore(b) - getScore(a));
+
+  const resumeTabs = sortedTabs.filter(t => getScore(t) >= 15).slice(0, 3);
+  const resumeItems = resumeTabs.map(tab => createResumeTabHTML(tab)).join('');
+  const tabItems = sortedTabs.map((tab) => createTabItemHTML(tab)).join('');
+
+  return `
+    ${resumeItems ? `
+      <div class="ghost-dock__resume-bar">
+        <span class="ghost-dock__resume-label">Resume</span>
+        <div class="ghost-dock__resume-tabs">${resumeItems}</div>
+      </div>
+    ` : ''}
+    <div class="ghost-dock__tab-rail">${tabItems || '<div class="ghost-dock__empty">No tabs</div>'}</div>
+  `;
 }
 
 init().catch(console.error);

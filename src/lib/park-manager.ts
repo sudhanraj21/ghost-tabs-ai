@@ -1,8 +1,17 @@
 import type { GhostTab } from './types';
-import { addGhostTab, getGhostTabByUrl, getSettings, updateBadgeCount, getGhostTabs, saveGhostTabs, removeGhostTabByUrl } from './storage';
+import { addGhostTab, getGhostTabByUrl, getSettings, updateBadgeCount, getGhostTabs, saveGhostTabs, removeGhostTabByUrl, getUserIntelligence, mergeDuplicateTabs } from './storage';
 import { getIntentForUrl } from './intent-engine';
 import { getTabActivity, removeTabActivity, getInactiveTabs } from './tab-tracker';
 import { generateId } from './storage';
+
+function normalizeUrlForIntel(url: string): string {
+  try {
+    const u = new URL(url);
+    return u.hostname + u.pathname.replace(/\/+$/, '');
+  } catch {
+    return url;
+  }
+}
 
 export async function parkTab(tabId: number): Promise<GhostTab | null> {
   try {
@@ -145,9 +154,6 @@ export async function autoParkInactiveTabs(): Promise<number> {
   
   if (!settings.autoParkEnabled) return 0;
   
-  const allTabs = await chrome.tabs.query({});
-  const totalTabs = allTabs.length;
-  
   const excludedDomains = settings.excludedDomains.map(d => d.toLowerCase());
   const meetingDomains = settings.meetingDomains.map(d => d.toLowerCase());
   
@@ -159,10 +165,27 @@ export async function autoParkInactiveTabs(): Promise<number> {
   
   if (inactiveTabs.length === 0) return 0;
   
-  const validTabIds = inactiveTabs
+  const activeTabsResult = await chrome.tabs.query({ active: true });
+  const activeTabIds = new Set(activeTabsResult.map(t => t.id).filter((id): id is number => id !== undefined));
+  
+  const validInactiveTabs = inactiveTabs.filter(t => !activeTabIds.has(t.tabId));
+  
+  if (validInactiveTabs.length === 0) return 0;
+  
+  const intel = await getUserIntelligence();
+  const frequentlyRestoredUrls = Object.entries(intel.restoredUrls)
+    .filter(([_, data]) => data.count >= 3)
+    .map(([url]) => url);
+  
+  const validTabIds = validInactiveTabs
     .filter(t => {
       if (!t.url) return false;
       if (t.url.startsWith('chrome://') || t.url.startsWith('chrome-extension://')) return false;
+      
+      const normalized = normalizeUrlForIntel(t.url);
+      if (frequentlyRestoredUrls.some(url => normalized.includes(url) || url.includes(normalized))) {
+        return false;
+      }
       
       try {
         const domain = new URL(t.url).hostname.toLowerCase();
@@ -174,12 +197,11 @@ export async function autoParkInactiveTabs(): Promise<number> {
     })
     .map(t => t.tabId);
   
-  if (totalTabs > settings.maxActiveTabsBeforeSuggestion) {
-    const parked = await parkTabs(validTabIds);
-    return parked.length;
-  }
+  if (validTabIds.length === 0) return 0;
   
-  return 0;
+  const parked = await parkTabs(validTabIds);
+  await mergeDuplicateTabs();
+  return parked.length;
 }
 
 export async function parkAllInactiveTabs(): Promise<number> {
@@ -194,7 +216,12 @@ export async function parkAllInactiveTabs(): Promise<number> {
     settings.ignoreAudibleTabs
   );
   
-  const validTabIds = inactiveTabs
+  const activeTabsResult = await chrome.tabs.query({ active: true });
+  const activeTabIds = new Set(activeTabsResult.map(t => t.id).filter((id): id is number => id !== undefined));
+  
+  const validInactiveTabs = inactiveTabs.filter(t => !activeTabIds.has(t.tabId));
+  
+  const validTabIds = validInactiveTabs
     .filter(t => {
       if (!t.url) return false;
       if (t.url.startsWith('chrome://') || t.url.startsWith('chrome-extension://')) return false;

@@ -1,4 +1,4 @@
-import type { GhostTab, GhostSettings, IntentOverride, DailySummary } from './types';
+import type { GhostTab, GhostSettings, IntentOverride, DailySummary, LearnedAICategory } from './types';
 import { DEFAULT_SETTINGS } from './types';
 
 const STORAGE_KEYS = {
@@ -8,7 +8,200 @@ const STORAGE_KEYS = {
   INTENT_OVERRIDES: 'intentOverrides',
   DAILY_SUMMARIES: 'dailySummaries',
   TAB_ACTIVITIES: 'tabActivities',
+  USER_INTEL: 'userIntelligence',
+  LEARNED_AI_CATEGORIES: 'learnedAICategories',
 } as const;
+
+export interface UserIntelligence {
+  restoredUrls: Record<string, { count: number; lastRestored: number }>;
+  timePatterns: Record<string, number>;
+  weekdayPatterns: Record<number, number>;
+}
+
+export async function getUserIntelligence(): Promise<UserIntelligence> {
+  const result = await chrome.storage.local.get(STORAGE_KEYS.USER_INTEL);
+  return (result[STORAGE_KEYS.USER_INTEL] as UserIntelligence) || {
+    restoredUrls: {},
+    timePatterns: {},
+    weekdayPatterns: {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0}
+  };
+}
+
+export async function recordTabRestore(url: string): Promise<void> {
+  const intel = await getUserIntelligence();
+  const normalized = normalizeUrl(url);
+  
+  if (intel.restoredUrls[normalized]) {
+    intel.restoredUrls[normalized].count++;
+    intel.restoredUrls[normalized].lastRestored = Date.now();
+  } else {
+    intel.restoredUrls[normalized] = { count: 1, lastRestored: Date.now() };
+  }
+  
+  const hour = new Date().getHours();
+  intel.timePatterns[hour] = (intel.timePatterns[hour] || 0) + 1;
+  
+  const day = new Date().getDay();
+  intel.weekdayPatterns[day] = (intel.weekdayPatterns[day] || 0) + 1;
+  
+  await chrome.storage.local.set({ [STORAGE_KEYS.USER_INTEL]: intel });
+}
+
+export async function getMostRestoredUrls(limit: number = 5): Promise<string[]> {
+  const intel = await getUserIntelligence();
+  return Object.entries(intel.restoredUrls)
+    .sort((a, b) => b[1].count - a[1].count)
+    .slice(0, limit)
+    .map(([url]) => url);
+}
+
+export async function suggestBasedOnTime(): Promise<string[]> {
+  const intel = await getUserIntelligence();
+  const hour = new Date().getHours();
+  const day = new Date().getDay();
+  
+  const suggestions: string[] = [];
+  
+  if (intel.weekdayPatterns[day] > 10) {
+    const topTimeHours = Object.entries(intel.timePatterns)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([h]) => parseInt(h));
+    
+    if (topTimeHours.includes(hour)) {
+      const topUrls = await getMostRestoredUrls(3);
+      suggestions.push(...topUrls);
+    }
+  }
+  
+  return suggestions;
+}
+
+export async function getLearnedAICategories(): Promise<Record<string, LearnedAICategory>> {
+  const result = await chrome.storage.local.get(STORAGE_KEYS.LEARNED_AI_CATEGORIES);
+  return (result[STORAGE_KEYS.LEARNED_AI_CATEGORIES] as Record<string, LearnedAICategory>) || {};
+}
+
+export async function saveLearnedAICategories(categories: Record<string, LearnedAICategory>): Promise<void> {
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.LEARNED_AI_CATEGORIES]: categories,
+  });
+}
+
+export async function addLearnedAICategory(
+  categoryId: string,
+  label: string,
+  domain: string,
+  title: string,
+  url: string
+): Promise<LearnedAICategory> {
+  const categories = await getLearnedAICategories();
+  
+  let category = categories[categoryId];
+  const now = Date.now();
+  
+  if (category) {
+    category.label = label;
+    category.updatedAt = now;
+    category.usageCount++;
+    if (!category.exampleDomains.includes(domain)) {
+      category.exampleDomains.push(domain);
+    }
+    if (!category.examples.some(e => e.url === url)) {
+      category.examples.push({ title, url });
+      if (category.examples.length > 10) {
+        category.examples = category.examples.slice(-10);
+      }
+    }
+  } else {
+    category = {
+      id: categoryId,
+      label,
+      createdAt: now,
+      updatedAt: now,
+      source: 'ai',
+      exampleDomains: [domain],
+      keywordHints: [],
+      examples: [{ title, url }],
+      usageCount: 1,
+    };
+    categories[categoryId] = category;
+  }
+  
+  await saveLearnedAICategories(categories);
+  return category;
+}
+
+export async function findMatchingLearnedCategory(domain: string, title: string): Promise<LearnedAICategory | null> {
+  const categories = await getLearnedAICategories();
+  const titleLower = title.toLowerCase();
+  
+  for (const cat of Object.values(categories)) {
+    if (cat.exampleDomains.includes(domain)) {
+      return cat;
+    }
+    for (const hint of cat.keywordHints) {
+      if (titleLower.includes(hint.toLowerCase())) {
+        return cat;
+      }
+    }
+  }
+  
+  return null;
+}
+
+function normalizeUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    return u.hostname + u.pathname.replace(/\/+$/, '');
+  } catch {
+    return url;
+  }
+}
+
+export async function getDuplicateUrls(): Promise<Record<string, string[]>> {
+  const tabs = await getGhostTabs();
+  const urlMap: Record<string, string[]> = {};
+  
+  for (const tab of tabs) {
+    const normalized = normalizeUrl(tab.url);
+    if (!urlMap[normalized]) {
+      urlMap[normalized] = [];
+    }
+    urlMap[normalized].push(tab.id);
+  }
+  
+  const duplicates: Record<string, string[]> = {};
+  for (const [url, ids] of Object.entries(urlMap)) {
+    if (ids.length > 1) {
+      duplicates[url] = ids;
+    }
+  }
+  
+  return duplicates;
+}
+
+export async function mergeDuplicateTabs(): Promise<number> {
+  const duplicates = await getDuplicateUrls();
+  let merged = 0;
+  
+  const tabs = await getGhostTabs();
+  const toRemove: string[] = [];
+  
+  for (const [, ids] of Object.entries(duplicates)) {
+    if (ids.length > 1) {
+      toRemove.push(...ids.slice(1));
+      merged += ids.length - 1;
+    }
+  }
+  
+  if (toRemove.length > 0) {
+    const updatedTabs = tabs.filter(t => !toRemove.includes(t.id));
+    await saveGhostTabs(updatedTabs);
+  }
+  
+  return merged;
+}
 
 export async function getGhostTabs(): Promise<GhostTab[]> {
   const result = await chrome.storage.local.get(STORAGE_KEYS.GHOST_TABS);

@@ -32,6 +32,34 @@ export interface GhostTab {
   notes?: string;
   status: GhostStatus;
   skipped?: boolean;
+  aiCategory?: string;
+  aiCategoryLabel?: string;
+  aiSummary?: string;
+  aiLabel?: string;
+  aiCluster?: string;
+  aiConfidence?: number;
+  aiReasoning?: string;
+  cleanedAt?: number;
+  cleanupFlags?: string[];
+  duplicateOf?: string | null;
+}
+
+export interface LearnedAICategory {
+  id: string;
+  label: string;
+  createdAt: number;
+  updatedAt: number;
+  source: 'ai';
+  exampleDomains: string[];
+  keywordHints: string[];
+  examples: { title: string; url: string }[];
+  usageCount: number;
+}
+
+export interface DuplicateGroup {
+  canonicalId: string;
+  duplicateIds: string[];
+  urls: string[];
 }
 
 export type GhostShelfPosition = 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
@@ -53,6 +81,8 @@ export interface GhostSettings {
   ghostShelfPosition: GhostShelfPosition;
   ghostShelfStartCollapsed: boolean;
   language: Locale;
+  aiEnabled: boolean;
+  aiApiKey: string;
 }
 
 export interface TabActivity {
@@ -105,6 +135,8 @@ export const DEFAULT_SETTINGS: GhostSettings = {
   ghostShelfPosition: 'bottom-right',
   ghostShelfStartCollapsed: true,
   language: 'en',
+  aiEnabled: false,
+  aiApiKey: '',
 };
 
 export const INTENT_LABELS: Record<Intent, string> = {

@@ -237,8 +237,9 @@
   gap: 2px;
   padding: 4px 8px;
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: auto;
   max-width: 900px;
+  max-height: 300px;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
   mask-image: linear-gradient(90deg, transparent 0%, black 5%, black 95%, transparent 100%);

@@ -1,4 +1,5 @@
-import { updateBadgeCount, getSettings, getActiveGhostTabs, getGhostTabs, initBadgeCount } from '../lib/storage';
+import type { GhostSettings, GhostTab } from '../lib/types';
+import { updateBadgeCount, getSettings, getActiveGhostTabs, getGhostTabs, initBadgeCount, recordTabRestore, getGhostTabById } from '../lib/storage';
 import { trackCurrentTabs, startTracking, updateTabActivity, removeTabActivity, initTabActivities } from '../lib/tab-tracker';
 import { parkTab, restoreTab, autoParkInactiveTabs, parkAllInactiveTabs } from '../lib/park-manager';
 import { getAllAIMetadata } from '../lib/ai-storage';
@@ -19,12 +20,44 @@ async function broadcastGhostTabsUpdate() {
   }
 }
 
+async function injectContentScriptsIntoOpenTabs() {
+  const restrictedUrls = ['chrome://', 'edge://', 'about:', 'chrome-extension://', 'devtools://'];
+  
+  const tabs = await chrome.tabs.query({});
+  
+  for (const tab of tabs) {
+    if (!tab.id || !tab.url) continue;
+    
+    const isRestricted = restrictedUrls.some(url => tab.url!.startsWith(url));
+    if (isRestricted) continue;
+    
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        files: ['content/content-script.js']
+      });
+      await chrome.scripting.insertCSS({
+        target: { tabId: tab.id },
+        files: ['content/styles.css']
+      });
+    } catch (e) {
+      // Ignore tabs where injection fails
+    }
+  }
+}
+
+async function refreshSettings() {
+  await broadcastGhostTabsUpdate();
+  await trackCurrentTabs();
+}
+
 chrome.runtime.onInstalled.addListener(async () => {
   console.log('GhostTabs AI installed');
   
   await initBadgeCount();
   await initTabActivities();
   await updateBadgeCount();
+  await injectContentScriptsIntoOpenTabs();
   startTracking();
   
   chrome.alarms.create(ALARM_NAME, {
@@ -46,12 +79,6 @@ chrome.runtime.onInstalled.addListener(async () => {
     title: 'Park All Inactive Tabs',
     contexts: ['page'],
   });
-});
-
-chrome.runtime.onStartup.addListener(async () => {
-  console.log('GhostTabs AI startup');
-  await updateBadgeCount();
-  startTracking();
 });
 
 chrome.tabs.onCreated.addListener(async (tab) => {
@@ -116,12 +143,16 @@ chrome.contextMenus.onClicked.addListener(async (info) => {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tabs[0]?.id) {
       await parkTab(tabs[0].id);
+      await updateBadgeCount();
+      await broadcastGhostTabsUpdate();
     }
   }
   
   if (info.menuItemId === 'park-all-inactive') {
     const count = await parkAllInactiveTabs();
     if (count > 0) {
+      await updateBadgeCount();
+      await broadcastGhostTabsUpdate();
       chrome.notifications.create({
         type: 'basic',
         iconUrl: '/assets/icon128.svg',
@@ -137,6 +168,7 @@ chrome.runtime.onStartup.addListener(async () => {
   await initBadgeCount();
   await initTabActivities();
   await updateBadgeCount();
+  await injectContentScriptsIntoOpenTabs();
   startTracking();
   
   chrome.alarms.create(ALARM_NAME, {
@@ -156,7 +188,11 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     
     const settings = await getSettings();
     if (settings.autoParkEnabled) {
-      await autoParkInactiveTabs();
+      const parked = await autoParkInactiveTabs();
+      if (parked > 0) {
+        await updateBadgeCount();
+        await broadcastGhostTabsUpdate();
+      }
     }
   }
   
@@ -195,6 +231,10 @@ async function handleMessage(message: { type: string; payload?: unknown }) {
     case 'PARK_TAB': {
       const tabId = message.payload as number;
       const result = await parkTab(tabId);
+      if (result) {
+        await updateBadgeCount();
+        await broadcastGhostTabsUpdate();
+      }
       return { success: true, data: result };
     }
     
@@ -231,6 +271,10 @@ async function handleMessage(message: { type: string; payload?: unknown }) {
     
     case 'RESTORE_TAB': {
       const { id } = message.payload as { id: string };
+      const ghostTab = await getGhostTabById(id);
+      if (ghostTab) {
+        await recordTabRestore(ghostTab.url);
+      }
       const tabId = await restoreTab(id);
       const allTabs = await chrome.tabs.query({});
       for (const tab of allTabs) {
@@ -273,9 +317,36 @@ async function handleMessage(message: { type: string; payload?: unknown }) {
       return { success: true };
     }
     
+    case 'MERGE_DUPLICATES': {
+      const { mergeDuplicateTabs, getDuplicateUrls } = await import('../lib/storage');
+      const duplicates = await getDuplicateUrls();
+      const duplicateCount = Object.keys(duplicates).length;
+      const merged = await mergeDuplicateTabs();
+      if (merged > 0) {
+        await updateBadgeCount();
+        broadcastGhostTabsUpdate();
+      }
+      return { success: true, data: { merged, duplicateCount } };
+    }
+    
+    case 'GET_SMART_SUGGESTIONS': {
+      const { suggestBasedOnTime, getMostRestoredUrls } = await import('../lib/storage');
+      const suggestions = await suggestBasedOnTime();
+      const topUrls = await getMostRestoredUrls(5);
+      return { success: true, data: { suggestions, topUrls } };
+    }
+    
     case 'GET_SETTINGS': {
       const settings = await getSettings();
       return { success: true, data: settings };
+    }
+    
+    case 'UPDATE_SETTINGS': {
+      const settings = message.payload as Partial<GhostSettings>;
+      const { saveSettings: doSaveSettings } = await import('../lib/storage');
+      await doSaveSettings(settings);
+      await refreshSettings();
+      return { success: true };
     }
     
     case 'UPDATE_BADGE': {
@@ -290,7 +361,105 @@ async function handleMessage(message: { type: string; payload?: unknown }) {
       return { success: true, data: translations };
     }
     
+    case 'GET_DEAD_TAB_CLEANER_REPORT': {
+      const { scanForDuplicates } = await import('../lib/dead-tab-cleaner');
+      const report = await scanForDuplicates();
+      return { success: true, data: report };
+    }
+    
+    case 'RUN_DEAD_TAB_CLEANUP': {
+      const { runDeadTabCleanup } = await import('../lib/dead-tab-cleaner');
+      const result = await runDeadTabCleanup();
+      await broadcastGhostTabsUpdate();
+      return { success: true, data: result };
+    }
+    
+    case 'RUN_AI_CATEGORIZATION_ALL': {
+      const { getGhostTabs, saveGhostTabs } = await import('../lib/storage');
+      const { getSettings } = await import('../lib/storage');
+      const settings = await getSettings();
+      
+      if (!settings.aiApiKey || !settings.aiEnabled) {
+        return { success: false, error: 'AI not enabled' };
+      }
+      
+      const tabs = await getGhostTabs();
+      const ghostTabs = tabs.filter(t => t.status === 'ghosted');
+      
+      let updated = 0;
+      for (const tab of ghostTabs) {
+        try {
+          const aiResult = await enrichTabWithAI(tab.url, tab.title, settings.aiApiKey);
+          if (aiResult) {
+            const updatedTabs = tabs.map(t => {
+              if (t.id === tab.id) {
+                return { ...t, ...aiResult };
+              }
+              return t;
+            });
+            await saveGhostTabs(updatedTabs);
+            updated++;
+          }
+        } catch {}
+      }
+      
+      await broadcastGhostTabsUpdate();
+      return { success: true, data: { updated } };
+    }
+    
+    case 'GET_LEARNED_AI_CATEGORIES': {
+      const { getLearnedAICategories } = await import('../lib/storage');
+      const categories = await getLearnedAICategories();
+      return { success: true, data: categories };
+    }
+    
     default:
       return { success: false, error: 'Unknown message type' };
+  }
+}
+
+async function enrichTabWithAI(url: string, title: string, apiKey: string): Promise<Partial<GhostTab> | null> {
+  try {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'system',
+            content: 'You categorize web pages. Return JSON: { "category": "string", "label": "string", "summary": "string", "cluster": "string", "confidence": number }',
+          },
+          {
+            role: 'user',
+            content: `URL: ${url}\nTitle: ${title}`,
+          },
+        ],
+        temperature: 0.3,
+      }),
+    });
+    
+    if (!response.ok) return null;
+    
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+    
+    if (!content) return null;
+    
+    const parsed = JSON.parse(content);
+    
+    return {
+      aiCategory: parsed.category?.toLowerCase().replace(/\s+/g, '-'),
+      aiCategoryLabel: parsed.label,
+      aiSummary: parsed.summary,
+      aiLabel: parsed.label,
+      aiCluster: parsed.cluster,
+      aiConfidence: parsed.confidence,
+    };
+  } catch {
+    return null;
   }
 }
