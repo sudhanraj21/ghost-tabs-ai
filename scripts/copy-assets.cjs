@@ -19,10 +19,12 @@ function copyDir(src, dest) {
 
 copyDir('assets', 'dist/assets');
 copyDir('src/content', 'dist/content');
+if (fs.existsSync('icons')) {
+  copyDir('icons', 'dist/icons');
+}
 fs.copyFileSync('manifest.json', 'dist/manifest.json');
 
 const manifest = JSON.parse(fs.readFileSync('dist/manifest.json', 'utf8'));
-delete manifest.icons;
 
 const contentCss = fs.readdirSync('dist/assets').find(f => f.startsWith('content-script') && f.endsWith('.css'));
 if (contentCss) {
