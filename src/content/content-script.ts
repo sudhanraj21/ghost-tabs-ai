@@ -36,6 +36,25 @@ let isExpanded = false;
 let clickTimer: ReturnType<typeof setTimeout> | null = null;
 let t: any = null;
 
+function getPageKey(): string {
+  return `ghostDock_scroll_${window.location.href}`;
+}
+
+async function saveDockScrollPosition(scrollLeft: number): Promise<void> {
+  try {
+    await chrome.storage.local.set({ [getPageKey()]: scrollLeft });
+  } catch {}
+}
+
+async function getDockScrollPosition(): Promise<number> {
+  try {
+    const result = await chrome.storage.local.get(getPageKey());
+    return result[getPageKey()] || 0;
+  } catch {
+    return 0;
+  }
+}
+
 async function loadTranslations() {
   try {
     const response = await chrome.runtime.sendMessage({ type: 'GET_TRANSLATIONS' });
@@ -308,6 +327,13 @@ function setupDockEvents(dock: HTMLElement) {
     return;
   }
 
+  const tabRail = dock.querySelector('.ghost-dock__tab-rail') as HTMLElement | null;
+  if (tabRail) {
+    tabRail.onscroll = () => {
+      saveDockScrollPosition(tabRail.scrollLeft);
+    };
+  }
+
   dockClickArea.onclick = (e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -390,6 +416,11 @@ function handleSingleClick() {
 }
 
 async function handleDoubleClick() {
+  const dock = document.getElementById('ghost-dock');
+  const tabRail = dock?.querySelector('.ghost-dock__tab-rail') as HTMLElement | null;
+  const currentScroll = tabRail?.scrollLeft ?? 0;
+  await saveDockScrollPosition(currentScroll);
+
   const response = await chrome.runtime.sendMessage({ type: 'PARK_CURRENT_TAB' });
   if (response.success) {
     if (response.data?.skipped) {
@@ -403,6 +434,11 @@ async function handleDoubleClick() {
 }
 
 async function restoreTab(id: string) {
+  const dock = document.getElementById('ghost-dock');
+  const tabRail = dock?.querySelector('.ghost-dock__tab-rail') as HTMLElement | null;
+  const currentScroll = tabRail?.scrollLeft ?? 0;
+  await saveDockScrollPosition(currentScroll);
+
   const response = await chrome.runtime.sendMessage({
     type: 'RESTORE_TAB',
     payload: { id },
@@ -418,6 +454,11 @@ async function restoreTab(id: string) {
 }
 
 async function deleteTab(id: string) {
+  const dock = document.getElementById('ghost-dock');
+  const tabRail = dock?.querySelector('.ghost-dock__tab-rail') as HTMLElement | null;
+  const currentScroll = tabRail?.scrollLeft ?? 0;
+  await saveDockScrollPosition(currentScroll);
+
   const response = await chrome.runtime.sendMessage({
     type: 'DELETE_TAB',
     payload: { id },
@@ -435,18 +476,19 @@ function updateDock() {
   if (dock) {
     const existingDock = dock.querySelector('.ghost-dock__dock');
     const existingBadge = dock.querySelector('.ghost-dock__badge');
-    const tabRail = dock.querySelector('.ghost-dock__tab-rail') as HTMLElement | null;
-    const prevScrollLeft = tabRail?.scrollLeft ?? 0;
     const prevBadgeText = existingBadge?.textContent ?? '';
     
     const newCount = ghostTabs.length;
     const newBadgeText = newCount > 0 ? (newCount > 99 ? '99+' : String(newCount)) : '';
     
-    const restoreScroll = () => {
+    const restoreScroll = async () => {
       const newTabRail = dock?.querySelector('.ghost-dock__tab-rail') as HTMLElement | null;
       if (newTabRail) {
+        const savedPos = await getDockScrollPosition();
+        const maxScroll = newTabRail.scrollWidth - newTabRail.clientWidth;
+        const clampedPos = Math.min(savedPos, Math.max(0, maxScroll));
         requestAnimationFrame(() => {
-          newTabRail.scrollLeft = prevScrollLeft;
+          newTabRail.scrollLeft = clampedPos;
         });
       }
     };
