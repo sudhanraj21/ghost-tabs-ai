@@ -442,18 +442,22 @@ function updateDock() {
     const newCount = ghostTabs.length;
     const newBadgeText = newCount > 0 ? (newCount > 99 ? '99+' : String(newCount)) : '';
     
+    const restoreScroll = () => {
+      const newTabRail = dock?.querySelector('.ghost-dock__tab-rail') as HTMLElement | null;
+      if (newTabRail) {
+        requestAnimationFrame(() => {
+          newTabRail.scrollLeft = prevScrollLeft;
+        });
+      }
+    };
+    
     if (prevBadgeText === newBadgeText && existingDock) {
       const newShelfHTML = createShelfHTML();
       const shelfEl = dock.querySelector('.ghost-dock__shelf');
       if (shelfEl) {
         shelfEl.innerHTML = newShelfHTML;
         setupDockEvents(dock);
-        const newTabRail = dock.querySelector('.ghost-dock__tab-rail') as HTMLElement | null;
-        if (newTabRail) {
-          requestAnimationFrame(() => {
-            newTabRail.scrollLeft = prevScrollLeft;
-          });
-        }
+        restoreScroll();
       }
     } else if (existingDock) {
       const newShelfHTML = createShelfHTML();
@@ -470,6 +474,7 @@ function updateDock() {
         existingDock.appendChild(badge);
       }
       setupDockEvents(dock);
+      restoreScroll();
     } else {
       dock.innerHTML = createDockHTML();
       setupDockEvents(dock);
